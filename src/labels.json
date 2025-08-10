@@ -1,5 +1,0 @@
-{
-"labels": ["Joy", "Sadness", "Anger", "Fear", "Love"],
-"map_to_id": {"Joy": 0, "Sadness": 1, "Anger": 2, "Fear": 3, "Love": 4},
-"id_to_label": {"0": "Joy", "1": "Sadness", "2": "Anger", "3": "Fear", "4": "Love"}
-}
