@@ -1,24 +1,13 @@
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 import numpy as np
-from scipy.stats import pearsonr, spearmanr
+from src.utils import load_labels
 
-def regression_metrics(y_true, y_pred):
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
-    mse = mean_squared_error(y_true, y_pred)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_true, y_pred)
-    try:
-        pearson_r, _ = pearsonr(y_true, y_pred)
-    except Exception:
-        pearson_r = float('nan')
-    try:
-        spearman_r, _ = spearmanr(y_true, y_pred)
-    except Exception:
-        spearman_r = float('nan')
-    return {"mse": mse, "rmse": rmse, "mae": mae, "pearson_r": pearson_r, "spearman_r": spearman_r}
+def classification_metrics(y_true, y_pred, average='macro'):
+    acc = accuracy_score(y_true, y_pred)
+    prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, average=average, zero_division=0)
+    return {"accuracy": acc, "precision": prec, "recall": rec, "f1": f1}
 
-if __name__ == "__main__":
-    y_true = [0.1, 0.5, 0.9]
-    y_pred = [0.2, 0.45, 0.8]
-    print(regression_metrics(y_true, y_pred))
+def confusion(y_true, y_pred):
+    labels, _, id2label = load_labels()
+    cm = confusion_matrix(y_true, y_pred, labels=list(range(len(labels))))
+    return cm, id2label

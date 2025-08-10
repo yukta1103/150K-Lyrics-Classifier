@@ -1,26 +1,33 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
 import os
+from sklearn.model_selection import train_test_split
 
-def load_csv(path="data/labeled_lyrics_cleaned.csv", nrows=None):
+def load_labeled_csv(path, nrows=None):
+    """
+    Load labeled CSV expected to contain columns: 'lyrics' and 'emotion' (emotion is literal label).
+    Returns pandas DataFrame.
+    """
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Dataset not found at {path}. Put labeled_lyrics_cleaned.csv in data/")
+        raise FileNotFoundError(f"{path} not found.")
     df = pd.read_csv(path, nrows=nrows)
-    # Ensure expected columns
-    if 'lyrics' not in df.columns or 'valence' not in df.columns:
-        raise ValueError("CSV must contain 'lyrics' and 'valence' columns.")
-    df = df[['lyrics', 'valence']].dropna().reset_index(drop=True)
-    # Ensure valence is numeric 0-1
-    df['valence'] = pd.to_numeric(df['valence'], errors='coerce')
-    df = df.dropna(subset=['valence']).reset_index(drop=True)
+    if 'lyrics' not in df.columns or 'emotion' not in df.columns:
+        raise ValueError("Labeled CSV must contain 'lyrics' and 'emotion' columns.")
+    df = df[['lyrics', 'emotion']].dropna().reset_index(drop=True)
     return df
 
-def train_val_split(df, test_size=0.1, random_state=42):
-    train, val = train_test_split(df, test_size=test_size, random_state=random_state)
-    return train.reset_index(drop=True), val.reset_index(drop=True)
+def load_unlabeled_csv(path, lyrics_col='lyrics', nrows=None):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{path} not found.")
+    df = pd.read_csv(path, nrows=nrows)
+    if lyrics_col not in df.columns:
+        raise ValueError(f"Unlabeled CSV must contain a '{lyrics_col}' column.")
+    df = df[[lyrics_col]].dropna().reset_index(drop=True)
+    df = df.rename(columns={lyrics_col: 'lyrics'})
+    return df
 
-if __name__ == "__main__":
-    df = load_csv()
-    print("Loaded rows:", len(df))
-    tr, va = train_val_split(df)
-    print("Train/Val:", len(tr), len(va))
+def train_val_split(df, test_size=0.1, random_state=42, stratify_col='emotion'):
+    if stratify_col in df.columns:
+        train, val = train_test_split(df, test_size=test_size, random_state=random_state, stratify=df[stratify_col])
+    else:
+        train, val = train_test_split(df, test_size=test_size, random_state=random_state)
+    return train.reset_index(drop=True), val.reset_index(drop=True)

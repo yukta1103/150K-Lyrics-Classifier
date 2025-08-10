@@ -1,60 +1,51 @@
-"""
-Train models without command-line arguments.
-Edit the variables in the CONFIG section and run:
-    python src/train.py
-"""
+# CONFIG
+INPUT_PATH = "data/raw_5m/part0.csv"   # path to a CSV with 'lyrics' column or adjust
+OUTPUT_PATH = "outputs/inference/part0_labeled.csv"
+MODEL_TYPE = "baseline"   # 'baseline' or 'bert'
+MODEL_PATH = "outputs/baseline/tfidf_logreg.joblib"   # for baseline
+BATCH_SIZE = 2000   # process N rows at a time to keep memory down
 
 import os
+import pandas as pd
 import numpy as np
-import joblib
-from data_utils import load_csv, train_val_split
-from preprocess import simple_tokenize
-from models.baseline import build_tfidf_ridge, train_tfidf_ridge, save_model
-from models.bert_train import train_bert_regression
-from evaluate import regression_metrics
+from src.data_utils import load_unlabeled_csv
+from src.preprocess import simple_tokenize
+from src.utils import load_labels
 
-# ------------------------
-# CONFIG
-# ------------------------
-MODEL_TYPE = "baseline"  # "baseline" or "bert"
-DATA_PATH = "data/labeled_lyrics_cleaned.csv"
-OUT_DIR = "outputs/baseline"
-MAX_ROWS = None           # e.g., 20000 for quick tests
-# Baseline params
-MAX_FEATURES = 30000
-ALPHA = 1.0
-# BERT params
-BERT_MODEL = "bert-base-uncased"
-EPOCHS = 3
-BATCH_SIZE = 8
-# ------------------------
-
-def train_baseline():
-    df = load_csv(DATA_PATH, nrows=MAX_ROWS)
+def infer_with_baseline(model_path, df):
+    from src.models.baseline import load
+    pipe = load(model_path)
     df['text'] = df['lyrics'].astype(str).map(simple_tokenize)
-    train_df, val_df = train_val_split(df, test_size=0.1)
-    pipe = build_tfidf_ridge(max_features=MAX_FEATURES, alpha=ALPHA)
-    pipe = train_tfidf_ridge(pipe, train_df['text'].tolist(), train_df['valence'].values)
-    os.makedirs(OUT_DIR, exist_ok=True)
-    save_model(pipe, os.path.join(OUT_DIR, "tfidf_ridge.joblib"))
-    preds = pipe.predict(val_df['text'].tolist())
-    preds = np.clip(preds, 0.0, 1.0)
-    metrics = regression_metrics(val_df['valence'].values, preds)
-    print("Validation metrics:", metrics)
-    joblib.dump(metrics, os.path.join(OUT_DIR, "metrics_baseline.joblib"))
+    preds = pipe.predict(df['text'].tolist())
+    probs = pipe.predict_proba(df['text'].tolist())
+    return preds, probs
 
-def train_bert():
-    df = load_csv(DATA_PATH)
-    if MAX_ROWS:
-        df = df.sample(n=min(MAX_ROWS, len(df)), random_state=42).reset_index(drop=True)
-    df['lyrics'] = df['lyrics'].astype(str).map(simple_tokenize)
-    os.makedirs(OUT_DIR, exist_ok=True)
-    train_bert_regression(df, model_name=BERT_MODEL, output_dir=OUT_DIR, epochs=EPOCHS, per_device_batch_size=BATCH_SIZE)
+def infer():
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    df = load_unlabeled_csv(INPUT_PATH)
+    n = len(df)
+    print("Rows to label:", n)
+    labels, map_to_id, id2label = load_labels()
+    out_rows = []
+    for start in range(0, n, BATCH_SIZE):
+        end = min(n, start + BATCH_SIZE)
+        batch = df.iloc[start:end].copy()
+        if MODEL_TYPE == "baseline":
+            preds, probs = infer_with_baseline(MODEL_PATH, batch)
+            batch['pred_label'] = preds
+            # map to ids and proba columns
+            batch['pred_id'] = [map_to_id.get(p, -1) for p in preds]
+            # probs is array (N, C)
+            for i, lab in enumerate(labels):
+                batch[f'prob_{lab}'] = probs[:, i]
+        else:
+            raise NotImplementedError("Only baseline inference implemented here.")
+        out_rows.append(batch)
+        print(f"Processed {end}/{n}")
+
+    out_df = pd.concat(out_rows, ignore_index=True)
+    out_df.to_csv(OUTPUT_PATH, index=False)
+    print("Saved labeled file to", OUTPUT_PATH)
 
 if __name__ == "__main__":
-    if MODEL_TYPE == "baseline":
-        train_baseline()
-    elif MODEL_TYPE == "bert":
-        train_bert()
-    else:
-        raise ValueError("Unknown MODEL_TYPE")
+    infer()
