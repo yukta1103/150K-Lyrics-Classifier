@@ -1,0 +1,16 @@
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+jupyterlab
+tqdm
+torch  
+transformers
+datasets
+sentencepiece
+tokenizers
+torchvision
+streamlit
+spotipy      
+pyyaml
