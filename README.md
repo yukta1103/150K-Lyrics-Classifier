@@ -37,7 +37,7 @@ Music analysis is vital for industry insights and personalized recommendations. 
 
 ## 📦 Installation & Usage
 
-'''
+```bash
 Clone repo
 git clone https://github.com/yukta1103/150K-Lyrics-Classifier.git
 cd 150K-Lyrics-Classifier
@@ -52,7 +52,7 @@ python src/train.py --lyrics_col lyrics --title_col title --artist_col artist
 
 Launch Streamlit app
 streamlit run streamlit_app/app.py
-'''
+```
 
 
 ## 📊 Results
@@ -69,14 +69,14 @@ Confusion matrix and visualizations are available in the `results/` folder.
 
 ## 📁 Project Structure
 
-'''
+```bash
 ├── data/
 ├── src/
 ├── streamlit_app/
 ├── results/
 ├── README.md
 └── requirements.txt
-'''
+```
 
 ## 🤔 Motivation & Impact
 
