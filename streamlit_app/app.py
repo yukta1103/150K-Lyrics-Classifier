@@ -1,5 +1,6 @@
 import streamlit as st
-import os
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import joblib
 import numpy as np
 from src.preprocess import simple_tokenize
