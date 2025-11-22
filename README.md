@@ -77,3 +77,15 @@ Confusion matrix and visualizations are available in the `results/` folder.
 ├── README.md
 └── requirements.txt
 '''
+
+## 🤔 Motivation & Impact
+
+The explosion of digital music platforms has made it crucial to understand song content at scale—for recommendation systems, playlist curation, and music analytics. Manual tagging is slow, inconsistent, and impractical for vast lyric databases. This project automates the process by applying advanced NLP and machine learning, enabling:
+
+Fast, reliable prediction of song genre and emotional tone from raw lyrics
+
+Insights into songwriter trends, audience preferences, and commercial potential
+
+Improved music discovery and user engagement on streaming platforms
+
+By bridging the gap between raw text and actionable metadata, this project highlights how machine learning can power better entertainment experiences and business decisions.
