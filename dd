@@ -1,3 +1,56 @@
-import torch
-print(torch.cuda.is_available())
-print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No GPU detected")
+import pandas as pd
+import re
+import numpy as np
+from transformers import AutoTokenizer
+
+INPUT_FILE = "data/labeled_emotions.csv"
+OUTPUT_FILE = "data/labeled_cleaned.csv"
+NROWS = None  # Process all data
+MODEL_NAME = "distilbert_5mil"
+
+def clean_lyrics(text):
+    text = str(text).lower()
+    # Remove metadata (e.g., [Verse 1], [Chorus])
+    text = re.sub(r'\[.*?\]', '', text)
+    # Remove URLs, HTML tags, special characters
+    text = re.sub(r'http\S+|www\S+|<.*?>', '', text)
+    # Remove excessive repetitions (e.g., "killa killa killa")
+    words = text.split()
+    deduped = []
+    prev_word, count = None, 0
+    for word in words:
+        if word == prev_word:
+            count += 1
+            if count < 3:  # Allow up to 2 repetitions
+                deduped.append(word)
+        else:
+            deduped.append(word)
+            prev_word, count = word, 1
+    text = ' '.join(deduped)
+    # Replace multiple newlines/spaces
+    text = re.sub(r'\n+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    # Truncate to ~500 chars to reduce token length
+    text = text[:500]
+    return text
+
+# Load and clean
+df = pd.read_csv(INPUT_FILE, nrows=NROWS)
+df = df[df['emotion'].notna()]
+if True:
+    df = df[df['emotion'] != 'neutral']
+df['clean_lyrics'] = df['clean_lyrics'].apply(clean_lyrics)
+
+# Token length analysis
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+lengths = [len(tokenizer(text, truncation=True, max_length=512)['input_ids']) for text in df['clean_lyrics']]
+print(f"Max length: {max(lengths)}")
+print(f"95th percentile: {np.percentile(lengths, 95)}")
+print(f"90th percentile: {np.percentile(lengths, 90)}")
+print(f"Median length: {np.median(lengths)}")
+print(f"Sample lyrics (first 100 chars): {df['clean_lyrics'].iloc[0][:100]}")
+print(f"Sample lyrics token count: {len(tokenizer(df['clean_lyrics'].iloc[0], truncation=True, max_length=512)['input_ids'])}")
+
+# Save cleaned dataset
+df.to_csv(OUTPUT_FILE, index=False)
+print(f"Saved cleaned dataset to {OUTPUT_FILE}")

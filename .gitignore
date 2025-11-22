@@ -17,3 +17,5 @@ data/.parquet
 .ipynb_checkpoints
 .DS_Store
 .vscode/
+*.safetensors
+stream

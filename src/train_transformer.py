@@ -5,21 +5,21 @@ from tqdm import tqdm
 import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
-from torch.optim import AdamW
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding, Adafactor
+from sklearn.utils.class_weight import compute_class_weight
 from datasets import Dataset
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, DataCollatorWithPadding
 
 if __name__ == "__main__":
     # ---------------- CONFIG ----------------
-    INPUT_FILE = "data/labeled.csv"
+    INPUT_FILE = "data/labeled.csv"  # Adjust if "labeled_emotions.csv"
     OUTPUT_DIR = "models/distilbert"
-    NROWS = 50000  # Reduce to 10000 for testing
+    NROWS = 5000000  # Increased sample size
     DROP_NEUTRAL = True
-    BATCH_SIZE = 16  # Adjusted for RTX 3060 Laptop (6 GB VRAM)
-    ACCUMULATION_STEPS = 4  # Effective batch size = 16 * 4 = 64
-    EPOCHS = 3
-    LEARNING_RATE = 2e-5
-    MAX_LENGTH = 128  # Adjust after token length analysis
+    BATCH_SIZE = 32
+    ACCUMULATION_STEPS = 2
+    EPOCHS = 5
+    LEARNING_RATE = 3e-5
+    MAX_LENGTH = 200  # Adjusted based on expected token lengths
     MODEL_NAME = "distilbert-base-uncased"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Training on: {DEVICE}")
@@ -36,7 +36,14 @@ if __name__ == "__main__":
         df = df[df['emotion'] != 'neutral']
     df = df[df['emotion'].notna()]
 
-    # 2. Map labels to IDs
+    # 2. Compute class weights
+    classes = df['emotion'].unique()
+    class_weights = compute_class_weight('balanced', classes=classes, y=df['emotion'])
+    class_weights = torch.tensor(class_weights, dtype=torch.float).to(DEVICE)
+    print("Class distribution:")
+    print(df['emotion'].value_counts(normalize=True))
+
+    # 3. Map labels to IDs
     label2id = {label: idx for idx, label in enumerate(EKMAN)}
     id2label = {idx: label for label, idx in label2id.items()}
     df['labels'] = df['emotion'].map(label2id)
@@ -44,10 +51,10 @@ if __name__ == "__main__":
         print("Warning: Some emotions could not be mapped to labels!")
         df = df.dropna(subset=['labels'])
 
-    # 3. Hugging Face Dataset
+    # 4. Hugging Face Dataset
     dataset = Dataset.from_pandas(df[['clean_lyrics', 'labels']].reset_index(drop=True))
 
-    # 4. Tokenization
+    # 5. Tokenization
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     def tokenize_function(examples):
         return tokenizer(
@@ -58,11 +65,11 @@ if __name__ == "__main__":
 
     # Token length analysis
     print("Analyzing token lengths...")
-    lengths = [len(tokenizer(text, truncation=True, max_length=512)['input_ids']) for text in dataset['clean_lyrics']]
-    print(f"Max length: {max(lengths)}, 95th percentile: {np.percentile(lengths, 95)}")
-    if np.percentile(lengths, 95) < 100:
-        print("Setting MAX_LENGTH to 100 for efficiency")
-        MAX_LENGTH = 100
+    lengths = [len(tokenizer(str(text), truncation=True, max_length=512)['input_ids']) for text in dataset['clean_lyrics']]
+    print(f"Max length: {max(lengths)}, 95th percentile: {np.percentile(lengths, 95)}, 90th percentile: {np.percentile(lengths, 90)}, Median: {np.median(lengths)}")
+    if np.percentile(lengths, 95) < 150:
+        print("Setting MAX_LENGTH to 150 for efficiency")
+        MAX_LENGTH = 150
 
     tokenized_dataset = dataset.map(tokenize_function, batched=True)
     tokenized_dataset.set_format(
@@ -70,7 +77,7 @@ if __name__ == "__main__":
         columns=['input_ids', 'attention_mask', 'labels']
     )
 
-    # 5. Train/Validation split
+    # 6. Train/Validation split
     train_size = int(0.85 * len(tokenized_dataset))
     train_dataset = tokenized_dataset.select(range(train_size))
     val_dataset = tokenized_dataset.select(range(train_size, len(tokenized_dataset)))
@@ -79,7 +86,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=data_collator, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, collate_fn=data_collator, num_workers=0)
 
-    # 6. Model
+    # 7. Model
     num_labels = len(EKMAN)
     model = AutoModelForSequenceClassification.from_pretrained(
         MODEL_NAME,
@@ -88,12 +95,12 @@ if __name__ == "__main__":
         label2id=label2id
     ).to(DEVICE)
 
-    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
+    optimizer = Adafactor(model.parameters(), lr=LEARNING_RATE, scale_parameter=False, relative_step=False)
     scaler = GradScaler('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # 7. Training loop with tqdm
+    # 8. Training loop with tqdm
     best_val_loss = float('inf')
-    patience = 1
+    patience = 2
     epochs_no_improve = 0
     for epoch in range(EPOCHS):
         model.train()
@@ -105,7 +112,9 @@ if __name__ == "__main__":
             try:
                 with autocast('cuda' if torch.cuda.is_available() else 'cpu'):
                     outputs = model(**batch)
-                    loss = outputs.loss / ACCUMULATION_STEPS
+                    loss = outputs.loss
+                    weights = class_weights[batch['labels']]
+                    loss = (loss * weights).mean() / ACCUMULATION_STEPS
                 scaler.scale(loss).backward()
                 if ((loop.n + 1) % ACCUMULATION_STEPS == 0) or (loop.n + 1 == len(train_loader)):
                     scaler.step(optimizer)
@@ -155,7 +164,7 @@ if __name__ == "__main__":
                 print(f"Early stopping triggered after {epoch+1} epochs")
                 break
 
-    # 8. Save final model
+    # 9. Save final model
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     model.save_pretrained(OUTPUT_DIR)
     tokenizer.save_pretrained(OUTPUT_DIR)
