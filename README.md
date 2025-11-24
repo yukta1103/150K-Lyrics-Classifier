@@ -26,9 +26,7 @@ Built using Python and industry-standard ML libraries (scikit-learn, pandas), th
 By automating lyric analysis, this project demonstrates applied machine learning in entertainment analytics—showcasing skills across NLP, model deployment, and user-focused app development. Recruiters see best practices in code organization, reproducibility, and impactful communication.
 
 ## 🎮 Demo
-[Live Streamlit App](YOUR-APP-LINK)
-
-![Demo Screenshot](img/demo.png)
+[Live Streamlit App](https://lyrics-classifier.streamlit.app)
 
 ## 🤔 Motivation & Impact
 
